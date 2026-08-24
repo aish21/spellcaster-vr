@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+from collections.abc import Sequence
 
 from spellcaster.gestures.models import HandObservation, Point2D
 from spellcaster.vision.geometry import normalized_to_pixel
@@ -58,7 +59,7 @@ def draw_hand(
 
 def draw_trajectory(
     frame: np.ndarray,
-    trajectory: list[Point2D],
+    trajectory: Sequence[Point2D],
 ) -> None:
     height, width, _ = frame.shape
 

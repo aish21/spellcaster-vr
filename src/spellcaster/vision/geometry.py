@@ -17,3 +17,14 @@ def normalized_to_pixel(
     y = int(point.y * height)
 
     return x, y
+
+
+def exponential_smooth(
+    current: Point2D,
+    previous: Point2D,
+    alpha: float,
+) -> Point2D:
+    return Point2D(
+        x=(alpha * current.x + (1.0 - alpha) * previous.x),
+        y=(alpha * current.y + (1.0 - alpha) * previous.y),
+    )

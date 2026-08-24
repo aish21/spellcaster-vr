@@ -542,12 +542,36 @@
 
 #     cv2.destroyAllWindows()
 
+import time
+
 import cv2
 
-from spellcaster.config import MODEL_PATH
+from spellcaster.config import (
+    CASTING_HAND,
+    MAX_LOST_FRAMES,
+    MIN_GESTURE_DURATION_MS,
+    MIN_GESTURE_POINTS,
+    MODEL_PATH,
+    NUM_HANDS,
+    PINCH_END_CONFIRM_FRAMES,
+    PINCH_END_RATIO,
+    PINCH_START_CONFIRM_FRAMES,
+    PINCH_START_RATIO,
+    SMOOTHING_ALPHA,
+)
+from spellcaster.gestures.capture import (
+    CaptureEvent,
+    GestureCapture,
+)
 from spellcaster.vision.hand_tracker import HandTracker
-from spellcaster.vision.rendering import draw_hand
-from spellcaster.gestures.capture import GestureCapture
+from spellcaster.vision.rendering import (
+    draw_hand,
+    draw_trajectory,
+)
+
+# ============================================================
+# Setup
+# ============================================================
 
 camera = cv2.VideoCapture(0)
 
@@ -555,29 +579,193 @@ if not camera.isOpened():
     raise RuntimeError("Could not open webcam")
 
 
-tracker = HandTracker(str(MODEL_PATH))
-capture = GestureCapture()
+tracker = HandTracker(
+    model_path=str(MODEL_PATH),
+    num_hands=NUM_HANDS,
+    preferred_handedness=CASTING_HAND,
+)
+
+
+capture = GestureCapture(
+    pinch_start_ratio=PINCH_START_RATIO,
+    pinch_end_ratio=PINCH_END_RATIO,
+    minimum_points=MIN_GESTURE_POINTS,
+    minimum_duration_ms=MIN_GESTURE_DURATION_MS,
+    max_lost_frames=MAX_LOST_FRAMES,
+    smoothing_alpha=SMOOTHING_ALPHA,
+    pinch_start_confirm_frames=PINCH_START_CONFIRM_FRAMES,
+    pinch_end_confirm_frames=PINCH_END_CONFIRM_FRAMES,
+)
+
+
+# The trajectory currently being displayed.
+#
+# While casting:
+#     this follows capture.current_trajectory
+#
+# After a successful cast:
+#     this stores the completed trajectory
+#
+# After rejection/cancellation:
+#     this is cleared
+display_trajectory = ()
+
 
 try:
 
     while True:
+
+        # ====================================================
+        # 1. Read frame
+        # ====================================================
 
         success, frame = camera.read()
 
         if not success:
             break
 
+        frame = cv2.flip(frame, 1)
+
+        # ====================================================
+        # 2. Detect hand
+        # ====================================================
+
         observation = tracker.detect(frame)
 
+        # ====================================================
+        # 3. Update gesture capture state
+        # ====================================================
+
+        timestamp_ms = time.monotonic_ns() // 1_000_000
+
+        result = capture.update(
+            observation,
+            timestamp_ms,
+        )
+
+        # ====================================================
+        # 4. Render hand if visible
+        # ====================================================
+
         if observation is not None:
-            draw_hand(frame, observation)
-            ratio = capture.calculate_pinch_ratio(observation)
-            print(f"Pinch ratio: {ratio:.3f}")
+            draw_hand(
+                frame,
+                observation,
+            )
+
+        # ====================================================
+        # 5. Handle capture events
+        #
+        # IMPORTANT:
+        # This must NOT live inside
+        #
+        #     if observation is not None
+        #
+        # because CANCELLED can occur when observation=None.
+        # ====================================================
+
+        if result.event == CaptureEvent.STARTED:
+
+            print("CAST STARTED")
+
+            # Starting a new gesture replaces any previously
+            # displayed completed gesture.
+            display_trajectory = capture.current_trajectory
+
+        elif result.event == CaptureEvent.COMPLETED:
+
+            print(
+                f"CAST COMPLETED: "
+                f"{len(result.trajectory)} points, "
+                f"{result.duration_ms} ms"
+            )
+
+            display_trajectory = result.trajectory
+
+        elif result.event == CaptureEvent.REJECTED:
+
+            print(
+                f"CAST REJECTED: "
+                f"{len(result.trajectory)} points, "
+                f"{result.duration_ms} ms"
+            )
+
+            display_trajectory = ()
+
+        elif result.event == CaptureEvent.CANCELLED:
+
+            print(
+                f"CAST CANCELLED: "
+                f"{len(result.trajectory)} points, "
+                f"{result.duration_ms} ms"
+            )
+
+            display_trajectory = ()
+
+        # ====================================================
+        # 6. While actively casting, use live trajectory
+        # ====================================================
+
+        if capture.is_pinching:
+
+            display_trajectory = capture.current_trajectory
+
+        # ====================================================
+        # 7. Draw trajectory
+        #
+        # This is outside hand detection deliberately.
+        #
+        # A brief MediaPipe dropout should not make the
+        # existing spell trail immediately disappear.
+        # ====================================================
+
+        draw_trajectory(
+            frame,
+            display_trajectory,
+        )
+
+        # ====================================================
+        # 8. Build display status
+        # ====================================================
+
+        if capture.is_pinching:
+
+            status = "CASTING"
+
+        elif observation is None:
+
+            status = "NO HAND"
+
+        else:
+
+            status = "READY"
+
+        # ====================================================
+        # 9. Render status
+        # ====================================================
+
+        cv2.putText(
+            frame,
+            status,
+            (20, 40),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            (0, 255, 0),
+            2,
+        )
+
+        # ====================================================
+        # 10. Show frame
+        # ====================================================
 
         cv2.imshow(
-            "RuneCaster Tracker Test",
+            "SpellCaster Tracker Test",
             frame,
         )
+
+        # ====================================================
+        # 11. Quit
+        # ====================================================
 
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
@@ -586,5 +774,7 @@ try:
 finally:
 
     tracker.close()
+
     camera.release()
+
     cv2.destroyAllWindows()
