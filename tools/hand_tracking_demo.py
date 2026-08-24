@@ -547,6 +547,7 @@ import cv2
 from spellcaster.config import MODEL_PATH
 from spellcaster.vision.hand_tracker import HandTracker
 from spellcaster.vision.rendering import draw_hand
+from spellcaster.gestures.capture import GestureCapture
 
 camera = cv2.VideoCapture(0)
 
@@ -555,7 +556,7 @@ if not camera.isOpened():
 
 
 tracker = HandTracker(str(MODEL_PATH))
-
+capture = GestureCapture()
 
 try:
 
@@ -570,6 +571,8 @@ try:
 
         if observation is not None:
             draw_hand(frame, observation)
+            ratio = capture.calculate_pinch_ratio(observation)
+            print(f"Pinch ratio: {ratio:.3f}")
 
         cv2.imshow(
             "RuneCaster Tracker Test",

@@ -1,13 +1,8 @@
 import cv2
 import numpy as np
 
-from spellcaster.gestures.models import (
-    HandObservation,
-    Point2D,
-)
-from spellcaster.vision.geometry import (
-    normalized_to_pixel,
-)
+from spellcaster.gestures.models import HandObservation, Point2D
+from spellcaster.vision.geometry import normalized_to_pixel
 from spellcaster.vision.landmarks import (
     HAND_CONNECTIONS,
     HandLandmark,
@@ -59,3 +54,28 @@ def draw_hand(
         (0, 0, 255),
         -1,
     )
+
+
+def draw_trajectory(
+    frame: np.ndarray,
+    trajectory: list[Point2D],
+) -> None:
+    height, width, _ = frame.shape
+
+    pixel_points = [
+        normalized_to_pixel(
+            point,
+            width,
+            height,
+        )
+        for point in trajectory
+    ]
+
+    for index in range(1, len(pixel_points)):
+        cv2.line(
+            frame,
+            pixel_points[index - 1],
+            pixel_points[index],
+            (255, 0, 255),
+            4,
+        )
