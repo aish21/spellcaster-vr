@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 
 models/*.task
+data/raw/*.json

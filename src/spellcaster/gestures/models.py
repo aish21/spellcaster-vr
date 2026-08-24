@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from spellcaster.gestures.spells import Spell
 
 
 @dataclass(frozen=True)
@@ -17,6 +18,6 @@ class HandObservation:
 @dataclass(frozen=True)
 class GestureSample:
     gesture_id: str
-    label: str
+    spell: Spell
     duration_ms: int
     trajectory: tuple[Point2D, ...]
