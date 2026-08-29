@@ -1,7 +1,6 @@
 import time
-
+import uuid
 from enum import Enum, auto
-
 import cv2
 
 from spellcaster.config import (
@@ -31,6 +30,7 @@ from spellcaster.vision.rendering import (
     draw_hand,
     draw_trajectory,
 )
+from spellcaster.gestures.models import GestureSample
 
 # ============================================================
 # Collector state
@@ -496,7 +496,33 @@ try:
 
         if key == ord("s") and collector_state == CollectorState.REVIEW:
 
-            print("Save not implemented yet")
+            if (
+                pending_spell is None
+                or pending_duration_ms is None
+                or not pending_trajectory
+            ):
+                raise RuntimeError(
+                    "Collector entered REVIEW without " "a complete pending gesture"
+                )
+
+            sample = GestureSample(
+                gesture_id=str(uuid.uuid4()),
+                spell=pending_spell,
+                duration_ms=pending_duration_ms,
+                trajectory=pending_trajectory,
+            )
+
+            repository.save(sample)
+
+            print(f"Saved {sample.spell.value} sample " f"{sample.gesture_id}")
+
+            pending_trajectory = ()
+            pending_duration_ms = None
+            pending_spell = None
+
+            display_trajectory = ()
+
+            collector_state = CollectorState.COLLECTING
 
 
 # ============================================================
