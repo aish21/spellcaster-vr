@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from spellcaster.config import (
     INSPECTION_PLOTS_PATH,
     RAW_DATA_PATH,
+    RESAMPLED_GESTURE_POINTS,
 )
 from spellcaster.gestures.models import (
     GestureSample,
@@ -21,6 +22,7 @@ from spellcaster.gestures.spells import Spell
 from spellcaster.ml.preprocessing import (
     center_trajectory,
     normalize_translation_and_scale,
+    preprocess_trajectory,
 )
 
 TrajectoryTransform = Callable[
@@ -36,6 +38,7 @@ def group_by_spell(
     grouped = {spell: [] for spell in Spell}
 
     for sample in samples:
+
         grouped[sample.spell].append(sample)
 
     return grouped
@@ -46,6 +49,7 @@ def describe_values(
 ) -> tuple[str, str, str, str]:
 
     if not values:
+
         return (
             "-",
             "-",
@@ -69,7 +73,7 @@ def print_dataset_summary(
 
     print()
 
-    print(f"Dataset: {RAW_DATA_PATH}")
+    print(f"Dataset: " f"{RAW_DATA_PATH}")
 
     print(f"Total samples: " f"{len(samples)}")
 
@@ -122,6 +126,16 @@ def unchanged_trajectory(
 ) -> tuple[Point2D, ...]:
 
     return tuple(trajectory)
+
+
+def fully_preprocessed_trajectory(
+    trajectory: Sequence[Point2D],
+) -> tuple[Point2D, ...]:
+
+    return preprocess_trajectory(
+        trajectory,
+        target_points=(RESAMPLED_GESTURE_POINTS),
+    )
 
 
 def plot_spell_samples(
@@ -204,6 +218,7 @@ def plot_spell_samples(
     axis.grid(True)
 
     if samples:
+
         axis.legend(
             title="Sample ID",
             fontsize=8,
@@ -285,6 +300,23 @@ def main() -> None:
             transform=(normalize_translation_and_scale),
             filename_suffix="normalized",
             representation_name=("translation + scale normalized"),
+            centered_coordinates=True,
+        )
+
+    # ========================================================
+    # NORMALIZED + FIXED-LENGTH RESAMPLING
+    # ========================================================
+
+    for spell in Spell:
+
+        plot_spell_samples(
+            spell=spell,
+            samples=grouped[spell],
+            transform=(fully_preprocessed_trajectory),
+            filename_suffix="resampled",
+            representation_name=(
+                f"normalized + " f"{RESAMPLED_GESTURE_POINTS}-point " f"resampled"
+            ),
             centered_coordinates=True,
         )
 

@@ -4,7 +4,10 @@ from spellcaster.gestures.models import Point2D
 from spellcaster.ml.preprocessing import (
     center_trajectory,
     normalize_translation_and_scale,
+    preprocess_trajectory,
+    resample_trajectory,
     scale_trajectory,
+    trajectory_length,
 )
 
 
@@ -118,3 +121,103 @@ def test_scale_zero_size_trajectory_raises_error():
         match="zero-size trajectory",
     ):
         scale_trajectory(trajectory)
+
+
+def test_resample_straight_line():
+    trajectory = (
+        Point2D(0.0, 0.0),
+        Point2D(1.0, 0.0),
+    )
+
+    resampled = resample_trajectory(
+        trajectory,
+        target_points=5,
+    )
+
+    expected_x = [
+        0.0,
+        0.25,
+        0.50,
+        0.75,
+        1.0,
+    ]
+
+    assert len(resampled) == 5
+
+    for point, expected in zip(
+        resampled,
+        expected_x,
+    ):
+        assert point.x == pytest.approx(expected)
+
+        assert point.y == pytest.approx(0.0)
+
+
+def test_resampling_ignores_uneven_original_spacing():
+    trajectory = (
+        Point2D(0.0, 0.0),
+        Point2D(0.1, 0.0),
+        Point2D(0.2, 0.0),
+        Point2D(1.0, 0.0),
+    )
+
+    resampled = resample_trajectory(
+        trajectory,
+        target_points=5,
+    )
+
+    expected_x = [
+        0.0,
+        0.25,
+        0.50,
+        0.75,
+        1.0,
+    ]
+
+    for point, expected in zip(
+        resampled,
+        expected_x,
+    ):
+        assert point.x == pytest.approx(expected)
+
+
+def test_resampling_produces_requested_point_count():
+    trajectory = (
+        Point2D(0.0, 0.0),
+        Point2D(0.2, 0.5),
+        Point2D(0.5, 0.8),
+        Point2D(1.0, 1.0),
+    )
+
+    resampled = resample_trajectory(
+        trajectory,
+        target_points=32,
+    )
+
+    assert len(resampled) == 32
+
+
+def test_resampling_preserves_endpoints():
+    trajectory = (
+        Point2D(0.1, 0.2),
+        Point2D(0.4, 0.8),
+        Point2D(0.9, 0.3),
+    )
+
+    resampled = resample_trajectory(
+        trajectory,
+        target_points=10,
+    )
+
+    assert resampled[0] == trajectory[0]
+    assert resampled[-1] == trajectory[-1]
+
+
+def test_trajectory_length():
+    trajectory = (
+        Point2D(0.0, 0.0),
+        Point2D(3.0, 0.0),
+        Point2D(3.0, 4.0),
+    )
+
+    assert trajectory_length(trajectory) == pytest.approx(7.0)
