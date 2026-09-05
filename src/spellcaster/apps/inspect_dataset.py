@@ -20,22 +20,13 @@ from spellcaster.gestures.repository import (
 from spellcaster.gestures.spells import Spell
 from spellcaster.ml.preprocessing import (
     center_trajectory,
+    normalize_translation_and_scale,
 )
-
-# ============================================================
-# Type aliases
-# ============================================================
-
 
 TrajectoryTransform = Callable[
     [Sequence[Point2D]],
     tuple[Point2D, ...],
 ]
-
-
-# ============================================================
-# Dataset grouping
-# ============================================================
 
 
 def group_by_spell(
@@ -45,15 +36,9 @@ def group_by_spell(
     grouped = {spell: [] for spell in Spell}
 
     for sample in samples:
-
         grouped[sample.spell].append(sample)
 
     return grouped
-
-
-# ============================================================
-# Statistics
-# ============================================================
 
 
 def describe_values(
@@ -61,7 +46,6 @@ def describe_values(
 ) -> tuple[str, str, str, str]:
 
     if not values:
-
         return (
             "-",
             "-",
@@ -133,24 +117,11 @@ def print_dataset_summary(
     print()
 
 
-# ============================================================
-# Trajectory transforms used for plotting
-# ============================================================
-
-
 def unchanged_trajectory(
     trajectory: Sequence[Point2D],
 ) -> tuple[Point2D, ...]:
-    """
-    Identity transformation used when plotting raw data.
-    """
 
     return tuple(trajectory)
-
-
-# ============================================================
-# Plotting
-# ============================================================
 
 
 def plot_spell_samples(
@@ -161,19 +132,8 @@ def plot_spell_samples(
     representation_name: str,
     centered_coordinates: bool,
 ) -> None:
-    """
-    Plot one representation of every sample belonging to a
-    spell and save the resulting figure.
-
-    The raw GestureSample is never modified. The supplied
-    transform produces a derived trajectory for visualization.
-    """
 
     figure, axis = plt.subplots(figsize=(7, 7))
-
-    # ========================================================
-    # Draw samples
-    # ========================================================
 
     for sample in samples:
 
@@ -194,10 +154,6 @@ def plot_spell_samples(
             label=short_id,
         )
 
-    # ========================================================
-    # Labels
-    # ========================================================
-
     axis.set_title(
         f"{spell.value.upper()} " f"— {len(samples)} " f"{representation_name} samples"
     )
@@ -205,10 +161,6 @@ def plot_spell_samples(
     axis.set_xlabel("x")
 
     axis.set_ylabel("y")
-
-    # ========================================================
-    # Coordinate space
-    # ========================================================
 
     if centered_coordinates:
 
@@ -222,8 +174,6 @@ def plot_spell_samples(
             -0.5,
         )
 
-        # Origin guides make it easy to verify that samples
-        # really are centred around (0, 0).
         axis.axvline(
             0.0,
             linewidth=0.8,
@@ -254,17 +204,12 @@ def plot_spell_samples(
     axis.grid(True)
 
     if samples:
-
         axis.legend(
             title="Sample ID",
             fontsize=8,
         )
 
     figure.tight_layout()
-
-    # ========================================================
-    # Save
-    # ========================================================
 
     output_path = INSPECTION_PLOTS_PATH / (f"{spell.value}_" f"{filename_suffix}.png")
 
@@ -275,11 +220,6 @@ def plot_spell_samples(
     )
 
     print(f"Saved plot: " f"{output_path}")
-
-
-# ============================================================
-# Application
-# ============================================================
 
 
 def main() -> None:
@@ -299,16 +239,12 @@ def main() -> None:
         exist_ok=True,
     )
 
-    # ========================================================
-    # Statistics
-    # ========================================================
-
     print_dataset_summary(samples)
 
     grouped = group_by_spell(samples)
 
     # ========================================================
-    # RAW plots
+    # RAW
     # ========================================================
 
     for spell in Spell:
@@ -323,7 +259,7 @@ def main() -> None:
         )
 
     # ========================================================
-    # TRANSLATION-NORMALIZED plots
+    # TRANSLATION NORMALIZED
     # ========================================================
 
     for spell in Spell:
@@ -337,11 +273,25 @@ def main() -> None:
             centered_coordinates=True,
         )
 
+    # ========================================================
+    # TRANSLATION + SCALE NORMALIZED
+    # ========================================================
+
+    for spell in Spell:
+
+        plot_spell_samples(
+            spell=spell,
+            samples=grouped[spell],
+            transform=(normalize_translation_and_scale),
+            filename_suffix="normalized",
+            representation_name=("translation + scale normalized"),
+            centered_coordinates=True,
+        )
+
     print()
 
     print(f"Inspection plots saved to: " f"{INSPECTION_PLOTS_PATH}")
 
-    # Show all raw and processed figures interactively.
     plt.show()
 
 
