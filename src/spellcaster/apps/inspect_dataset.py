@@ -1,3 +1,7 @@
+from collections.abc import (
+    Callable,
+    Sequence,
+)
 from statistics import mean, median
 
 import matplotlib.pyplot as plt
@@ -6,11 +10,28 @@ from spellcaster.config import (
     INSPECTION_PLOTS_PATH,
     RAW_DATA_PATH,
 )
-from spellcaster.gestures.models import GestureSample
+from spellcaster.gestures.models import (
+    GestureSample,
+    Point2D,
+)
 from spellcaster.gestures.repository import (
     GestureRepository,
 )
 from spellcaster.gestures.spells import Spell
+from spellcaster.ml.preprocessing import (
+    center_trajectory,
+)
+
+# ============================================================
+# Type aliases
+# ============================================================
+
+
+TrajectoryTransform = Callable[
+    [Sequence[Point2D]],
+    tuple[Point2D, ...],
+]
+
 
 # ============================================================
 # Dataset grouping
@@ -20,12 +41,6 @@ from spellcaster.gestures.spells import Spell
 def group_by_spell(
     samples: list[GestureSample],
 ) -> dict[Spell, list[GestureSample]]:
-    """
-    Group GestureSamples by their spell label.
-
-    Every Spell is included in the result, even when no samples
-    currently exist for that spell.
-    """
 
     grouped = {spell: [] for spell in Spell}
 
@@ -37,19 +52,13 @@ def group_by_spell(
 
 
 # ============================================================
-# Statistics helpers
+# Statistics
 # ============================================================
 
 
 def describe_values(
     values: list[int],
 ) -> tuple[str, str, str, str]:
-    """
-    Return printable minimum, median, mean, and maximum values.
-
-    Strings are returned because this helper is currently used
-    only for terminal presentation.
-    """
 
     if not values:
 
@@ -68,18 +77,9 @@ def describe_values(
     )
 
 
-# ============================================================
-# Terminal summary
-# ============================================================
-
-
 def print_dataset_summary(
     samples: list[GestureSample],
 ) -> None:
-    """
-    Print class counts plus duration and trajectory-length
-    statistics.
-    """
 
     grouped = group_by_spell(samples)
 
@@ -112,35 +112,40 @@ def print_dataset_summary(
 
         point_counts = [len(sample.trajectory) for sample in spell_samples]
 
-        (
-            duration_min,
-            duration_median,
-            duration_mean,
-            duration_max,
-        ) = describe_values(durations)
+        duration_stats = describe_values(durations)
 
-        (
-            points_min,
-            points_median,
-            points_mean,
-            points_max,
-        ) = describe_values(point_counts)
+        point_stats = describe_values(point_counts)
 
         print(
             f"{spell.value.upper():<14}"
             f"{len(spell_samples):>4}    "
-            f"{duration_min:>4}    "
-            f"{duration_median:>6}    "
-            f"{duration_mean:>6}    "
-            f"{duration_max:>4}"
+            f"{duration_stats[0]:>4}    "
+            f"{duration_stats[1]:>6}    "
+            f"{duration_stats[2]:>6}    "
+            f"{duration_stats[3]:>4}"
             f"      "
-            f"{points_min:>4}    "
-            f"{points_median:>6}    "
-            f"{points_mean:>6}    "
-            f"{points_max:>4}"
+            f"{point_stats[0]:>4}    "
+            f"{point_stats[1]:>6}    "
+            f"{point_stats[2]:>6}    "
+            f"{point_stats[3]:>4}"
         )
 
     print()
+
+
+# ============================================================
+# Trajectory transforms used for plotting
+# ============================================================
+
+
+def unchanged_trajectory(
+    trajectory: Sequence[Point2D],
+) -> tuple[Point2D, ...]:
+    """
+    Identity transformation used when plotting raw data.
+    """
+
+    return tuple(trajectory)
 
 
 # ============================================================
@@ -151,35 +156,32 @@ def print_dataset_summary(
 def plot_spell_samples(
     spell: Spell,
     samples: list[GestureSample],
+    transform: TrajectoryTransform,
+    filename_suffix: str,
+    representation_name: str,
+    centered_coordinates: bool,
 ) -> None:
     """
-    Plot every raw trajectory belonging to one spell.
+    Plot one representation of every sample belonging to a
+    spell and save the resulting figure.
 
-    Coordinates remain in original normalized camera space.
-
-    No:
-        - centering
-        - scaling
-        - resampling
-        - smoothing
-
-    is performed here.
-
-    The resulting plot is both saved to disk and displayed
-    interactively later by plt.show().
+    The raw GestureSample is never modified. The supplied
+    transform produces a derived trajectory for visualization.
     """
 
     figure, axis = plt.subplots(figsize=(7, 7))
 
-    # --------------------------------------------------------
-    # Draw every sample belonging to this spell.
-    # --------------------------------------------------------
+    # ========================================================
+    # Draw samples
+    # ========================================================
 
     for sample in samples:
 
-        x_values = [point.x for point in sample.trajectory]
+        trajectory = transform(sample.trajectory)
 
-        y_values = [point.y for point in sample.trajectory]
+        x_values = [point.x for point in trajectory]
+
+        y_values = [point.y for point in trajectory]
 
         short_id = sample.gesture_id[:8]
 
@@ -192,38 +194,58 @@ def plot_spell_samples(
             label=short_id,
         )
 
-    # --------------------------------------------------------
-    # Plot metadata
-    # --------------------------------------------------------
+    # ========================================================
+    # Labels
+    # ========================================================
 
-    axis.set_title(f"{spell.value.upper()} " f"— {len(samples)} raw samples")
-
-    axis.set_xlabel("Normalized x")
-
-    axis.set_ylabel("Normalized y")
-
-    # --------------------------------------------------------
-    # Preserve the complete original camera coordinate space.
-    #
-    # This is deliberate. At this stage we want to SEE
-    # translation and scale differences between gestures.
-    # --------------------------------------------------------
-
-    axis.set_xlim(
-        0.0,
-        1.0,
+    axis.set_title(
+        f"{spell.value.upper()} " f"— {len(samples)} " f"{representation_name} samples"
     )
 
-    # Camera/image coordinates have +y downward.
-    #
-    # Reverse the plot's y-axis so the gesture appears the same
-    # way it appeared in the webcam.
-    axis.set_ylim(
-        1.0,
-        0.0,
-    )
+    axis.set_xlabel("x")
 
-    # Equal scaling prevents geometric distortion.
+    axis.set_ylabel("y")
+
+    # ========================================================
+    # Coordinate space
+    # ========================================================
+
+    if centered_coordinates:
+
+        axis.set_xlim(
+            -0.5,
+            0.5,
+        )
+
+        axis.set_ylim(
+            0.5,
+            -0.5,
+        )
+
+        # Origin guides make it easy to verify that samples
+        # really are centred around (0, 0).
+        axis.axvline(
+            0.0,
+            linewidth=0.8,
+        )
+
+        axis.axhline(
+            0.0,
+            linewidth=0.8,
+        )
+
+    else:
+
+        axis.set_xlim(
+            0.0,
+            1.0,
+        )
+
+        axis.set_ylim(
+            1.0,
+            0.0,
+        )
+
     axis.set_aspect(
         "equal",
         adjustable="box",
@@ -240,17 +262,11 @@ def plot_spell_samples(
 
     figure.tight_layout()
 
-    # --------------------------------------------------------
-    # Save a persistent copy of this raw-data diagnostic.
-    #
-    # Examples:
-    #
-    # fireball_raw.png
-    # lightning_raw.png
-    # shield_raw.png
-    # --------------------------------------------------------
+    # ========================================================
+    # Save
+    # ========================================================
 
-    output_path = INSPECTION_PLOTS_PATH / f"{spell.value}_raw.png"
+    output_path = INSPECTION_PLOTS_PATH / (f"{spell.value}_" f"{filename_suffix}.png")
 
     figure.savefig(
         output_path,
@@ -272,60 +288,60 @@ def main() -> None:
 
     samples = repository.load_all()
 
-    # --------------------------------------------------------
-    # No dataset yet.
-    # --------------------------------------------------------
-
     if not samples:
 
         print("Dataset contains no gesture samples.")
 
         return
 
-    # --------------------------------------------------------
-    # Ensure generated plot directory exists.
-    # --------------------------------------------------------
-
     INSPECTION_PLOTS_PATH.mkdir(
         parents=True,
         exist_ok=True,
     )
 
-    # --------------------------------------------------------
-    # Terminal statistics
-    # --------------------------------------------------------
+    # ========================================================
+    # Statistics
+    # ========================================================
 
     print_dataset_summary(samples)
 
-    # --------------------------------------------------------
-    # Group once instead of repeatedly scanning the full
-    # dataset for every plot.
-    # --------------------------------------------------------
-
     grouped = group_by_spell(samples)
 
-    # --------------------------------------------------------
-    # Generate and save one raw-data plot per class.
-    # --------------------------------------------------------
+    # ========================================================
+    # RAW plots
+    # ========================================================
 
     for spell in Spell:
 
         plot_spell_samples(
-            spell,
-            grouped[spell],
+            spell=spell,
+            samples=grouped[spell],
+            transform=unchanged_trajectory,
+            filename_suffix="raw",
+            representation_name="raw",
+            centered_coordinates=False,
+        )
+
+    # ========================================================
+    # TRANSLATION-NORMALIZED plots
+    # ========================================================
+
+    for spell in Spell:
+
+        plot_spell_samples(
+            spell=spell,
+            samples=grouped[spell],
+            transform=center_trajectory,
+            filename_suffix="centered",
+            representation_name="centered",
+            centered_coordinates=True,
         )
 
     print()
 
     print(f"Inspection plots saved to: " f"{INSPECTION_PLOTS_PATH}")
 
-    # --------------------------------------------------------
-    # The figures have already been written to disk.
-    #
-    # Now open the same figures interactively so we can zoom,
-    # inspect individual samples, and visually compare them.
-    # --------------------------------------------------------
-
+    # Show all raw and processed figures interactively.
     plt.show()
 
 
