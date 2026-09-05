@@ -485,3 +485,51 @@ def test_tracking_loss_breaks_release_confirmation():
 
     assert result.event == CaptureEvent.COMPLETED
     assert capture.is_pinching is False
+
+
+def test_capture_preserves_raw_and_smoothed_trajectories():
+    capture = GestureCapture(
+        pinch_start_ratio=0.35,
+        pinch_end_ratio=0.50,
+        minimum_points=2,
+        minimum_duration_ms=0,
+        max_lost_frames=2,
+        smoothing_alpha=0.5,
+        pinch_start_confirm_frames=1,
+        pinch_end_confirm_frames=1,
+    )
+
+    # Start at x = 0.10.
+    capture.update(
+        create_observation(0.10),
+        timestamp_ms=0,
+    )
+
+    # Move to x = 0.30 while still pinching.
+    capture.update(
+        create_observation(0.30),
+        timestamp_ms=33,
+    )
+
+    # Release.
+    result = capture.update(
+        create_observation(0.60),
+        timestamp_ms=66,
+    )
+
+    assert result.event == CaptureEvent.COMPLETED
+
+    # ------------------------------------------------
+    # Raw point should remain exactly where MediaPipe
+    # reported it.
+    # ------------------------------------------------
+
+    assert result.trajectory[1].x == pytest.approx(0.30)
+
+    # ------------------------------------------------
+    # EMA:
+    #
+    # 0.5 * 0.30 + 0.5 * 0.10 = 0.20
+    # ------------------------------------------------
+
+    assert result.smoothed_trajectory[1].x == pytest.approx(0.20)

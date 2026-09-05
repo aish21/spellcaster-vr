@@ -7,7 +7,7 @@ from spellcaster.gestures.models import (
 )
 from spellcaster.gestures.spells import Spell
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def _sample_to_dict(
@@ -69,6 +69,15 @@ class GestureRepository:
                 "Unsupported gesture dataset " f"schema version: {schema_version}"
             )
 
+        trajectory_representation = document.get("trajectory_representation")
+
+        if trajectory_representation != "raw_pre_ema":
+            raise ValueError(
+                "Unsupported trajectory "
+                "representation: "
+                f"{trajectory_representation}"
+            )
+
         return [_sample_from_dict(sample_data) for sample_data in document["samples"]]
 
     def save(
@@ -105,6 +114,7 @@ class GestureRepository:
 
         document = {
             "schema_version": SCHEMA_VERSION,
+            "trajectory_representation": "raw_pre_ema",
             "samples": [_sample_to_dict(sample) for sample in samples],
         }
 

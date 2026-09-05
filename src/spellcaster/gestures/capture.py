@@ -23,7 +23,16 @@ class CaptureEvent(Enum):
 @dataclass(frozen=True)
 class CaptureResult:
     event: CaptureEvent
+
+    # Raw fingertip positions before EMA smoothing.
+    #
+    # This is the representation that should be persisted
+    # in GestureSample.
     trajectory: tuple[Point2D, ...] = ()
+
+    # Derived trajectory used for visual presentation.
+    smoothed_trajectory: tuple[Point2D, ...] = ()
+
     duration_ms: int | None = None
 
 
@@ -41,9 +50,9 @@ class GestureCapture:
         pinch_end_confirm_frames: int = 1,
     ) -> None:
 
-        # --------------------------------------------
+        # ====================================================
         # Validate configuration
-        # --------------------------------------------
+        # ====================================================
 
         if pinch_start_ratio >= pinch_end_ratio:
             raise ValueError("pinch_start_ratio must be less than " "pinch_end_ratio")
@@ -61,19 +70,21 @@ class GestureCapture:
             raise ValueError("smoothing_alpha must be in the range (0, 1]")
 
         if pinch_start_confirm_frames <= 0:
-            raise ValueError("pinch_start_confirm_frames must be greater than zero")
+            raise ValueError("pinch_start_confirm_frames " "must be greater than zero")
 
         if pinch_end_confirm_frames <= 0:
-            raise ValueError("pinch_end_confirm_frames must be greater than zero")
+            raise ValueError("pinch_end_confirm_frames " "must be greater than zero")
 
-        # --------------------------------------------
+        # ====================================================
         # Configuration
-        # --------------------------------------------
+        # ====================================================
 
         self._pinch_start_ratio = pinch_start_ratio
+
         self._pinch_end_ratio = pinch_end_ratio
 
         self._minimum_points = minimum_points
+
         self._minimum_duration_ms = minimum_duration_ms
 
         self._max_lost_frames = max_lost_frames
@@ -84,13 +95,17 @@ class GestureCapture:
 
         self._pinch_end_confirm_frames = pinch_end_confirm_frames
 
-        # --------------------------------------------
-        # Persistent state
-        # --------------------------------------------
+        # ====================================================
+        # Persistent capture state
+        # ====================================================
 
         self._is_pinching = False
 
-        self._trajectory: list[Point2D] = []
+        # Unmodified fingertip positions.
+        self._raw_trajectory: list[Point2D] = []
+
+        # EMA-filtered positions for presentation.
+        self._smoothed_trajectory: list[Point2D] = []
 
         self._cast_start_time_ms: int | None = None
 
@@ -99,20 +114,42 @@ class GestureCapture:
         self._lost_frames = 0
 
         self._start_candidate_frames = 0
+
         self._end_candidate_frames = 0
 
     @property
-    def is_pinching(self) -> bool:
+    def is_pinching(
+        self,
+    ) -> bool:
         return self._is_pinching
 
     @property
-    def current_trajectory(self) -> tuple[Point2D, ...]:
-        return tuple(self._trajectory)
+    def current_trajectory(
+        self,
+    ) -> tuple[Point2D, ...]:
+        """
+        Current EMA-smoothed trajectory.
+
+        Used for real-time visual presentation.
+        """
+
+        return tuple(self._smoothed_trajectory)
+
+    @property
+    def current_raw_trajectory(
+        self,
+    ) -> tuple[Point2D, ...]:
+        """
+        Current pre-EMA fingertip trajectory.
+        """
+
+        return tuple(self._raw_trajectory)
 
     def calculate_pinch_ratio(
         self,
         observation: HandObservation,
     ) -> float:
+
         landmarks = observation.landmarks
 
         wrist = landmarks[HandLandmark.WRIST]
@@ -144,24 +181,24 @@ class GestureCapture:
         timestamp_ms: int,
     ) -> CaptureResult:
 
-        # --------------------------------------------
+        # ====================================================
         # No hand detected
-        # --------------------------------------------
+        # ====================================================
 
         if observation is None:
+
             return self._handle_missing_hand(timestamp_ms)
 
-        # Detection recovered, so the consecutive
-        # missing-frame counter resets.
+        # Hand detection recovered.
         self._lost_frames = 0
 
         pinch_ratio = self.calculate_pinch_ratio(observation)
 
         index_tip = observation.landmarks[HandLandmark.INDEX_TIP]
 
-        # --------------------------------------------
+        # ====================================================
         # State: OPEN
-        # --------------------------------------------
+        # ====================================================
 
         if not self._is_pinching:
 
@@ -170,6 +207,7 @@ class GestureCapture:
                 self._start_candidate_frames += 1
 
                 if self._start_candidate_frames >= self._pinch_start_confirm_frames:
+
                     self._start_candidate_frames = 0
 
                     self._start_cast(
@@ -180,19 +218,21 @@ class GestureCapture:
                     return CaptureResult(event=CaptureEvent.STARTED)
 
             else:
+
                 self._start_candidate_frames = 0
 
             return CaptureResult(event=CaptureEvent.NONE)
 
-        # --------------------------------------------
+        # ====================================================
         # State: PINCHING
-        # --------------------------------------------
+        # ====================================================
 
         if pinch_ratio > self._pinch_end_ratio:
 
             self._end_candidate_frames += 1
 
             if self._end_candidate_frames >= self._pinch_end_confirm_frames:
+
                 self._end_candidate_frames = 0
 
                 return self._finish_cast(timestamp_ms)
@@ -210,14 +250,20 @@ class GestureCapture:
         index_tip: Point2D,
         timestamp_ms: int,
     ) -> None:
+
         self._is_pinching = True
 
         self._cast_start_time_ms = timestamp_ms
 
+        # First point exists in both representations.
+        self._raw_trajectory = [index_tip]
+
+        self._smoothed_trajectory = [index_tip]
+
         self._smoothed_index = index_tip
 
-        self._trajectory = [index_tip]
         self._start_candidate_frames = 0
+
         self._end_candidate_frames = 0
 
     def _record_point(
@@ -225,17 +271,29 @@ class GestureCapture:
         index_tip: Point2D,
     ) -> None:
 
+        # ====================================================
+        # Preserve RAW measurement first
+        # ====================================================
+
+        self._raw_trajectory.append(index_tip)
+
+        # ====================================================
+        # Create derived smoothed representation
+        # ====================================================
+
         if self._smoothed_index is None:
+
             self._smoothed_index = index_tip
 
         else:
+
             self._smoothed_index = exponential_smooth(
                 current=index_tip,
                 previous=self._smoothed_index,
                 alpha=self._smoothing_alpha,
             )
 
-        self._trajectory.append(self._smoothed_index)
+        self._smoothed_trajectory.append(self._smoothed_index)
 
     def _finish_cast(
         self,
@@ -243,19 +301,27 @@ class GestureCapture:
     ) -> CaptureResult:
 
         if self._cast_start_time_ms is None:
+
             duration_ms = 0
+
         else:
+
             duration_ms = timestamp_ms - self._cast_start_time_ms
 
-        completed_trajectory = tuple(self._trajectory)
+        completed_trajectory = tuple(self._raw_trajectory)
+
+        completed_smoothed_trajectory = tuple(self._smoothed_trajectory)
 
         enough_points = len(completed_trajectory) >= self._minimum_points
 
         long_enough = duration_ms >= self._minimum_duration_ms
 
         if enough_points and long_enough:
+
             event = CaptureEvent.COMPLETED
+
         else:
+
             event = CaptureEvent.REJECTED
 
         self._reset_cast()
@@ -263,6 +329,7 @@ class GestureCapture:
         return CaptureResult(
             event=event,
             trajectory=completed_trajectory,
+            smoothed_trajectory=(completed_smoothed_trajectory),
             duration_ms=duration_ms,
         )
 
@@ -271,65 +338,65 @@ class GestureCapture:
         timestamp_ms: int,
     ) -> CaptureResult:
 
-        # ------------------------------------------------
-        # IDLE
-        #
-        # If we were considering starting a cast,
-        # losing the hand breaks that consecutive sequence.
-        # ------------------------------------------------
+        # ====================================================
+        # Missing hand while idle
+        # ====================================================
 
         if not self._is_pinching:
+
             self._lost_frames = 0
 
             self._start_candidate_frames = 0
 
             return CaptureResult(event=CaptureEvent.NONE)
 
-        # ------------------------------------------------
-        # CASTING
-        #
-        # If we were considering ending a cast, a missing
-        # frame breaks that consecutive release sequence.
-        # ------------------------------------------------
-
+        # A missing frame breaks release confirmation.
         self._end_candidate_frames = 0
 
         self._lost_frames += 1
 
-        # ------------------------------------------------
+        # ====================================================
         # Temporary tracking loss
-        #
-        # Do nothing yet. The existing trajectory and
-        # casting state remain alive.
-        # ------------------------------------------------
+        # ====================================================
 
         if self._lost_frames <= self._max_lost_frames:
+
             return CaptureResult(event=CaptureEvent.NONE)
 
-        # ------------------------------------------------
-        # Tracking was gone too long -> cancel cast
-        # ------------------------------------------------
+        # ====================================================
+        # Tracking loss exceeded grace period
+        # ====================================================
 
         if self._cast_start_time_ms is None:
+
             duration_ms = 0
 
         else:
+
             duration_ms = timestamp_ms - self._cast_start_time_ms
 
-        cancelled_trajectory = tuple(self._trajectory)
+        cancelled_trajectory = tuple(self._raw_trajectory)
+
+        cancelled_smoothed_trajectory = tuple(self._smoothed_trajectory)
 
         self._reset_cast()
 
         return CaptureResult(
             event=CaptureEvent.CANCELLED,
             trajectory=cancelled_trajectory,
+            smoothed_trajectory=(cancelled_smoothed_trajectory),
             duration_ms=duration_ms,
         )
 
-    def _reset_cast(self) -> None:
+    def _reset_cast(
+        self,
+    ) -> None:
+
         self._is_pinching = False
 
-        self._trajectory = []
+        self._raw_trajectory = []
+
+        self._smoothed_trajectory = []
 
         self._cast_start_time_ms = None
 
@@ -338,4 +405,5 @@ class GestureCapture:
         self._lost_frames = 0
 
         self._start_candidate_frames = 0
+
         self._end_candidate_frames = 0
