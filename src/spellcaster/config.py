@@ -2,6 +2,7 @@ from pathlib import Path
 
 MODEL_PATH = Path("models/hand_landmarker.task")
 RAW_DATA_PATH = Path("data/raw/gestures.json")
+INSPECTION_PLOTS_PATH = Path("data/inspection")
 
 PINCH_START_RATIO = 0.35
 PINCH_END_RATIO = 0.50
