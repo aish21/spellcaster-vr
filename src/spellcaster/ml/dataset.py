@@ -25,31 +25,10 @@ StringArray = NDArray[np.str_]
 
 @dataclass(frozen=True)
 class MLDataset:
-    """
-    Model-ready supervised-learning dataset.
-
-    features:
-        Numeric feature matrix X.
-
-        Shape:
-            (number_of_samples, number_of_features)
-
-    labels:
-        Target labels y.
-
-        Shape:
-            (number_of_samples,)
-
-    sample_ids:
-        Source GestureSample IDs.
-
-        These are diagnostic metadata and are NOT supplied to
-        the model as features.
-    """
-
     features: FloatArray
     labels: StringArray
     sample_ids: tuple[str, ...]
+    session_ids: tuple[str, ...]
 
 
 # ============================================================
@@ -134,8 +113,17 @@ def build_ml_dataset(
 
         raise RuntimeError("ML dataset rows, labels, and " "sample IDs are not aligned")
 
+    session_ids = tuple(sample.session_id for sample in samples)
+    if not (
+        features.shape[0] == labels.shape[0] == len(sample_ids) == len(session_ids)
+    ):
+        raise RuntimeError(
+            "ML dataset rows, labels, sample IDs, and session IDs are not aligned"
+        )
+
     return MLDataset(
         features=features,
         labels=labels,
         sample_ids=sample_ids,
+        session_ids=session_ids,
     )

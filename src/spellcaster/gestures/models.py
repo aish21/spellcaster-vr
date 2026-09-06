@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+
 from spellcaster.gestures.spells import Spell
 
 
@@ -18,6 +19,15 @@ class HandObservation:
 @dataclass(frozen=True)
 class GestureSample:
     gesture_id: str
+
+    # Identifies one collector run / collection session.
+    #
+    # Used for dataset diagnostics and group-aware validation.
+    # It is NOT an ML feature.
+    session_id: str
+
     spell: Spell
+
     duration_ms: int
+
     trajectory: tuple[Point2D, ...]

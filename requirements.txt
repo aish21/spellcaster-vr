@@ -3,3 +3,4 @@ mediapipe
 numpy
 pytest
 matplotlib
+scikit-learn

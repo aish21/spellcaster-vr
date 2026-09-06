@@ -24,12 +24,16 @@ from spellcaster.gestures.capture import (
     CaptureEvent,
     GestureCapture,
 )
-from spellcaster.gestures.models import GestureSample
+from spellcaster.gestures.models import (
+    GestureSample,
+)
 from spellcaster.gestures.repository import (
     GestureRepository,
 )
 from spellcaster.gestures.spells import Spell
-from spellcaster.vision.hand_tracker import HandTracker
+from spellcaster.vision.hand_tracker import (
+    HandTracker,
+)
 from spellcaster.vision.rendering import (
     draw_hand,
     draw_trajectory,
@@ -66,20 +70,31 @@ SPELL_KEYS = {
 
 def draw_dataset_counts(
     frame,
-    sample_counts: dict[Spell, int],
+    sample_counts: dict[
+        Spell,
+        int,
+    ],
     target: int,
 ) -> None:
 
     x = frame.shape[1] - 210
+
     y = 40
 
     cv2.putText(
         frame,
         "DATASET",
-        (x, y),
+        (
+            x,
+            y,
+        ),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.6,
-        (255, 255, 255),
+        (
+            255,
+            255,
+            255,
+        ),
         2,
     )
 
@@ -94,10 +109,17 @@ def draw_dataset_counts(
         cv2.putText(
             frame,
             text,
-            (x, y),
+            (
+                x,
+                y,
+            ),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.45,
-            (255, 255, 255),
+            (
+                255,
+                255,
+                255,
+            ),
             1,
         )
 
@@ -105,13 +127,30 @@ def draw_dataset_counts(
 
 
 # ============================================================
-# Camera setup
+# Session metadata
+# ============================================================
+
+
+# A collection session corresponds to one launch of this
+# collector application.
+#
+# Every gesture saved during this run receives the same ID.
+session_id = str(uuid.uuid4())
+
+
+print(f"Collection session: " f"{session_id}")
+
+
+# ============================================================
+# Camera
 # ============================================================
 
 
 camera = cv2.VideoCapture(0)
 
+
 if not camera.isOpened():
+
     raise RuntimeError("Could not open webcam")
 
 
@@ -123,17 +162,17 @@ if not camera.isOpened():
 tracker = HandTracker(
     model_path=str(MODEL_PATH),
     num_hands=NUM_HANDS,
-    preferred_handedness=CASTING_HAND,
+    preferred_handedness=(CASTING_HAND),
 )
 
 
 capture = GestureCapture(
-    pinch_start_ratio=PINCH_START_RATIO,
-    pinch_end_ratio=PINCH_END_RATIO,
-    minimum_points=MIN_GESTURE_POINTS,
-    minimum_duration_ms=MIN_GESTURE_DURATION_MS,
-    max_lost_frames=MAX_LOST_FRAMES,
-    smoothing_alpha=SMOOTHING_ALPHA,
+    pinch_start_ratio=(PINCH_START_RATIO),
+    pinch_end_ratio=(PINCH_END_RATIO),
+    minimum_points=(MIN_GESTURE_POINTS),
+    minimum_duration_ms=(MIN_GESTURE_DURATION_MS),
+    max_lost_frames=(MAX_LOST_FRAMES),
+    smoothing_alpha=(SMOOTHING_ALPHA),
     pinch_start_confirm_frames=(PINCH_START_CONFIRM_FRAMES),
     pinch_end_confirm_frames=(PINCH_END_CONFIRM_FRAMES),
 )
@@ -152,14 +191,15 @@ sample_counts = repository.count_by_spell()
 
 current_spell = Spell.FIREBALL
 
+
 collector_state = CollectorState.COLLECTING
 
 
-# Smoothed trajectory shown to the user.
+# Smoothed trajectory used only for presentation.
 display_trajectory = ()
 
 
-# Raw data waiting to become a GestureSample.
+# Raw pre-EMA data awaiting review.
 pending_trajectory = ()
 
 pending_duration_ms: int | None = None
@@ -168,7 +208,7 @@ pending_spell: Spell | None = None
 
 
 # ============================================================
-# Main application
+# Application
 # ============================================================
 
 
@@ -177,12 +217,13 @@ try:
     while True:
 
         # ====================================================
-        # 1. Read camera frame
+        # Camera frame
         # ====================================================
 
         success, frame = camera.read()
 
         if not success:
+
             break
 
         frame = cv2.flip(
@@ -191,13 +232,13 @@ try:
         )
 
         # ====================================================
-        # 2. Detect designated casting hand
+        # Hand detection
         # ====================================================
 
         observation = tracker.detect(frame)
 
         # ====================================================
-        # 3. Update GestureCapture
+        # Gesture capture
         # ====================================================
 
         timestamp_ms = time.monotonic_ns() // 1_000_000
@@ -214,7 +255,7 @@ try:
             result = None
 
         # ====================================================
-        # 4. Draw detected hand
+        # Hand rendering
         # ====================================================
 
         if observation is not None:
@@ -225,7 +266,7 @@ try:
             )
 
         # ====================================================
-        # 5. Handle capture events
+        # Capture events
         # ====================================================
 
         if result is not None:
@@ -236,24 +277,16 @@ try:
 
             elif result.event == CaptureEvent.COMPLETED:
 
-                # --------------------------------------------
                 # Persistable representation:
-                #
-                # RAW pre-EMA trajectory.
-                # --------------------------------------------
-
+                # raw pre-EMA trajectory.
                 pending_trajectory = result.trajectory
 
                 pending_duration_ms = result.duration_ms
 
                 pending_spell = current_spell
 
-                # --------------------------------------------
                 # Presentation representation:
-                #
                 # EMA-smoothed trajectory.
-                # --------------------------------------------
-
                 display_trajectory = result.smoothed_trajectory
 
                 collector_state = CollectorState.REVIEW
@@ -261,7 +294,8 @@ try:
                 print(
                     f"Reviewing "
                     f"{pending_spell.value}: "
-                    f"{len(pending_trajectory)} points, "
+                    f"{len(pending_trajectory)} "
+                    f"points, "
                     f"{pending_duration_ms} ms"
                 )
 
@@ -269,7 +303,8 @@ try:
 
                 print(
                     f"Rejected gesture: "
-                    f"{len(result.trajectory)} points, "
+                    f"{len(result.trajectory)} "
+                    f"points, "
                     f"{result.duration_ms} ms"
                 )
 
@@ -282,7 +317,7 @@ try:
                 display_trajectory = ()
 
         # ====================================================
-        # 6. Display live smoothed trajectory
+        # Live smoothed trajectory
         # ====================================================
 
         if collector_state == CollectorState.COLLECTING and capture.is_pinching:
@@ -290,7 +325,7 @@ try:
             display_trajectory = capture.current_trajectory
 
         # ====================================================
-        # 7. Draw trajectory
+        # Draw trajectory
         # ====================================================
 
         draw_trajectory(
@@ -299,26 +334,33 @@ try:
         )
 
         # ====================================================
-        # 8. Draw selected spell
+        # Selected spell
         # ====================================================
 
         cv2.putText(
             frame,
             (f"Spell: " f"{current_spell.value.upper()}"),
-            (20, 40),
+            (
+                20,
+                40,
+            ),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.8,
-            (255, 255, 255),
+            (
+                255,
+                255,
+                255,
+            ),
             2,
         )
 
         # ====================================================
-        # 9. Determine status
+        # Status
         # ====================================================
 
         if collector_state == CollectorState.REVIEW:
 
-            capture_status = "REVIEW - S SAVE | R REJECT"
+            capture_status = "REVIEW - " "S SAVE | R REJECT"
 
         elif capture.is_pinching:
 
@@ -332,22 +374,25 @@ try:
 
             capture_status = "READY"
 
-        # ====================================================
-        # 10. Draw status
-        # ====================================================
-
         cv2.putText(
             frame,
             capture_status,
-            (20, 75),
+            (
+                20,
+                75,
+            ),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
-            (0, 255, 0),
+            (
+                0,
+                255,
+                0,
+            ),
             2,
         )
 
         # ====================================================
-        # 11. Draw selected-spell progress
+        # Current-class dataset progress
         # ====================================================
 
         current_count = sample_counts[current_spell]
@@ -370,39 +415,56 @@ try:
         cv2.putText(
             frame,
             progress_text,
-            (20, 110),
+            (
+                20,
+                110,
+            ),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.65,
-            (255, 255, 255),
+            (
+                255,
+                255,
+                255,
+            ),
             2,
         )
 
         # ====================================================
-        # 12. Draw review metadata
+        # Review metadata
         # ====================================================
 
-        if collector_state == CollectorState.REVIEW:
+        if (
+            collector_state == CollectorState.REVIEW
+            and pending_spell is not None
+            and pending_duration_ms is not None
+        ):
 
-            if pending_spell is not None and pending_duration_ms is not None:
+            review_text = (
+                f"{pending_spell.value.upper()} | "
+                f"{len(pending_trajectory)} "
+                f"points | "
+                f"{pending_duration_ms} ms"
+            )
 
-                review_text = (
-                    f"{pending_spell.value.upper()} | "
-                    f"{len(pending_trajectory)} points | "
-                    f"{pending_duration_ms} ms"
-                )
-
-                cv2.putText(
-                    frame,
-                    review_text,
-                    (20, 145),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6,
-                    (255, 255, 255),
-                    2,
-                )
+            cv2.putText(
+                frame,
+                review_text,
+                (
+                    20,
+                    145,
+                ),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (
+                    255,
+                    255,
+                    255,
+                ),
+                2,
+            )
 
         # ====================================================
-        # 13. Draw full dataset counts
+        # Full dataset counts
         # ====================================================
 
         draw_dataset_counts(
@@ -412,7 +474,7 @@ try:
         )
 
         # ====================================================
-        # 14. Draw controls
+        # Controls
         # ====================================================
 
         cv2.putText(
@@ -432,12 +494,16 @@ try:
             ),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.45,
-            (255, 255, 255),
+            (
+                255,
+                255,
+                255,
+            ),
             1,
         )
 
         # ====================================================
-        # 15. Show frame
+        # Display
         # ====================================================
 
         cv2.imshow(
@@ -445,17 +511,18 @@ try:
             frame,
         )
 
-        # ====================================================
-        # 16. Read keyboard input
-        # ====================================================
-
         key = cv2.waitKey(1) & 0xFF
 
+        # ====================================================
+        # Quit
+        # ====================================================
+
         if key == ord("q"):
+
             break
 
         # ====================================================
-        # 17. Spell selection
+        # Spell selection
         # ====================================================
 
         if (
@@ -471,14 +538,14 @@ try:
             print(f"Selected spell: " f"{current_spell.value}")
 
         # ====================================================
-        # 18. Reject
+        # Reject reviewed gesture
         # ====================================================
 
         if key == ord("r") and collector_state == CollectorState.REVIEW:
 
             if pending_spell is not None:
 
-                print(f"Rejected " f"{pending_spell.value} sample")
+                print(f"Rejected " f"{pending_spell.value} " f"sample")
 
             pending_trajectory = ()
 
@@ -491,7 +558,7 @@ try:
             collector_state = CollectorState.COLLECTING
 
         # ====================================================
-        # 19. Save
+        # Save reviewed gesture
         # ====================================================
 
         if key == ord("s") and collector_state == CollectorState.REVIEW:
@@ -503,25 +570,30 @@ try:
             ):
 
                 raise RuntimeError(
-                    "Collector entered REVIEW without " "a complete pending gesture"
+                    "Collector entered REVIEW " "without a complete pending " "gesture"
                 )
 
             sample = GestureSample(
                 gesture_id=str(uuid.uuid4()),
+                session_id=(session_id),
                 spell=pending_spell,
                 duration_ms=(pending_duration_ms),
                 trajectory=(pending_trajectory),
             )
 
+            # Persist before altering application state.
             repository.save(sample)
 
             sample_counts[sample.spell] += 1
 
-            print(f"Saved " f"{sample.spell.value} sample " f"{sample.gesture_id}")
+            print(f"Saved " f"{sample.spell.value} " f"sample " f"{sample.gesture_id}")
+
+            print(f"Session: " f"{sample.session_id}")
 
             print(
                 f"{sample.spell.value}: "
-                f"{sample_counts[sample.spell]} / "
+                f"{sample_counts[sample.spell]}"
+                f" / "
                 f"{TARGET_SAMPLES_PER_SPELL}"
             )
 
@@ -535,10 +607,6 @@ try:
 
             collector_state = CollectorState.COLLECTING
 
-
-# ============================================================
-# Cleanup
-# ============================================================
 
 finally:
 
