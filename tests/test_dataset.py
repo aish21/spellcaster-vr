@@ -13,12 +13,15 @@ from spellcaster.ml.features import (
     sample_to_feature_vector,
 )
 
+TEST_SESSION_ID = "test-session"
+
 
 def test_build_ml_dataset_has_expected_shapes():
 
     samples = (
         GestureSample(
             gesture_id="fireball-1",
+            session_id=TEST_SESSION_ID,
             spell=Spell.FIREBALL,
             duration_ms=500,
             trajectory=(
@@ -29,6 +32,7 @@ def test_build_ml_dataset_has_expected_shapes():
         ),
         GestureSample(
             gesture_id="shield-1",
+            session_id=TEST_SESSION_ID,
             spell=Spell.SHIELD,
             duration_ms=700,
             trajectory=(
@@ -53,11 +57,14 @@ def test_build_ml_dataset_has_expected_shapes():
 
     assert len(dataset.sample_ids) == 2
 
+    assert len(dataset.session_ids) == 2
+
 
 def test_dataset_preserves_sample_alignment():
 
     fireball = GestureSample(
         gesture_id="fireball-123",
+        session_id="session-a",
         spell=Spell.FIREBALL,
         duration_ms=500,
         trajectory=(
@@ -69,6 +76,7 @@ def test_dataset_preserves_sample_alignment():
 
     shield = GestureSample(
         gesture_id="shield-456",
+        session_id="session-b",
         spell=Spell.SHIELD,
         duration_ms=700,
         trajectory=(
@@ -96,11 +104,17 @@ def test_dataset_preserves_sample_alignment():
         "shield-456",
     )
 
+    assert dataset.session_ids == (
+        "session-a",
+        "session-b",
+    )
+
 
 def test_dataset_feature_row_matches_sample_features():
 
     sample = GestureSample(
         gesture_id="sample-1",
+        session_id=TEST_SESSION_ID,
         spell=Spell.LIGHTNING,
         duration_ms=500,
         trajectory=(

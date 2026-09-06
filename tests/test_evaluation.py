@@ -52,6 +52,7 @@ def test_knn_cross_validation_tracks_predictions_and_neighbors():
         features=features,
         labels=labels,
         sample_ids=sample_ids,
+        session_ids=tuple("test-session" for _ in sample_ids),
     )
 
     evaluation = evaluate_knn_cross_validation(
@@ -106,11 +107,13 @@ def test_knn_cross_validation_requires_enough_samples_per_class():
         ],
         dtype=np.str_,
     )
+    sample_ids = tuple(f"sample-{index}" for index in range(8))
 
     dataset = MLDataset(
         features=features,
         labels=labels,
-        sample_ids=tuple(f"sample-{index}" for index in range(8)),
+        sample_ids=sample_ids,
+        session_ids=tuple("test-session" for _ in sample_ids),
     )
 
     with pytest.raises(
@@ -151,10 +154,13 @@ def test_knn_cross_validation_rejects_unknown_weighting():
         dtype=np.str_,
     )
 
+    sample_ids = tuple(f"sample-{index}" for index in range(8))
+
     dataset = MLDataset(
         features=features,
         labels=labels,
-        sample_ids=tuple(f"sample-{index}" for index in range(10)),
+        sample_ids=sample_ids,
+        session_ids=tuple("test-session" for _ in sample_ids),
     )
 
     with pytest.raises(

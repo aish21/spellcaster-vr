@@ -70,14 +70,29 @@ SPELL_KEYS = {
 
 def draw_dataset_counts(
     frame,
-    sample_counts: dict[
+    session_sample_counts: dict[
+        Spell,
+        int,
+    ],
+    total_sample_counts: dict[
         Spell,
         int,
     ],
     target: int,
 ) -> None:
+    """
+    Display collection progress for the current session alongside
+    the total number of samples stored in the dataset.
 
-    x = frame.shape[1] - 210
+    Example:
+
+        FIREBALL: 3/5  total 8
+
+    The session target controls the current collection run.
+    Total counts are informational only.
+    """
+
+    x = frame.shape[1] - 250
 
     y = 40
 
@@ -102,9 +117,15 @@ def draw_dataset_counts(
 
     for spell in Spell:
 
-        count = sample_counts[spell]
+        session_count = session_sample_counts[spell]
 
-        text = f"{spell.value[:12].upper()}: " f"{count}/{target}"
+        total_count = total_sample_counts[spell]
+
+        text = (
+            f"{spell.value[:12].upper()}: "
+            f"{session_count}/{target} "
+            f"total {total_count}"
+        )
 
         cv2.putText(
             frame,
@@ -114,7 +135,7 @@ def draw_dataset_counts(
                 y,
             ),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.45,
+            0.40,
             (
                 255,
                 255,
@@ -131,10 +152,10 @@ def draw_dataset_counts(
 # ============================================================
 
 
-# A collection session corresponds to one launch of this
-# collector application.
+# One collector launch corresponds to one collection session.
 #
-# Every gesture saved during this run receives the same ID.
+# Every gesture saved during this application run receives the
+# same session ID.
 session_id = str(uuid.uuid4())
 
 
@@ -181,7 +202,20 @@ capture = GestureCapture(
 repository = GestureRepository(RAW_DATA_PATH)
 
 
-sample_counts = repository.count_by_spell()
+# ============================================================
+# Dataset counters
+# ============================================================
+
+
+# Persistent total across ALL collection sessions.
+total_sample_counts = repository.count_by_spell()
+
+
+# Current collector launch only.
+#
+# Because session_id was generated when this application
+# started, no previously stored sample can belong to it.
+session_sample_counts = {spell: 0 for spell in Spell}
 
 
 # ============================================================
@@ -392,16 +426,16 @@ try:
         )
 
         # ====================================================
-        # Current-class dataset progress
+        # Current-session progress for selected spell
         # ====================================================
 
-        current_count = sample_counts[current_spell]
+        current_session_count = session_sample_counts[current_spell]
 
-        if current_count >= TARGET_SAMPLES_PER_SPELL:
+        if current_session_count >= TARGET_SAMPLES_PER_SPELL:
 
             progress_text = (
-                f"Samples: "
-                f"{current_count} / "
+                f"Session samples: "
+                f"{current_session_count} / "
                 f"{TARGET_SAMPLES_PER_SPELL} "
                 f"- TARGET REACHED"
             )
@@ -409,7 +443,9 @@ try:
         else:
 
             progress_text = (
-                f"Samples: " f"{current_count} / " f"{TARGET_SAMPLES_PER_SPELL}"
+                f"Session samples: "
+                f"{current_session_count} / "
+                f"{TARGET_SAMPLES_PER_SPELL}"
             )
 
         cv2.putText(
@@ -420,7 +456,7 @@ try:
                 110,
             ),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.65,
+            0.60,
             (
                 255,
                 255,
@@ -464,13 +500,14 @@ try:
             )
 
         # ====================================================
-        # Full dataset counts
+        # Session + total dataset counts
         # ====================================================
 
         draw_dataset_counts(
-            frame,
-            sample_counts,
-            TARGET_SAMPLES_PER_SPELL,
+            frame=frame,
+            session_sample_counts=(session_sample_counts),
+            total_sample_counts=(total_sample_counts),
+            target=(TARGET_SAMPLES_PER_SPELL),
         )
 
         # ====================================================
@@ -581,21 +618,41 @@ try:
                 trajectory=(pending_trajectory),
             )
 
-            # Persist before altering application state.
+            # ------------------------------------------------
+            # Persist first.
+            # ------------------------------------------------
+
             repository.save(sample)
 
-            sample_counts[sample.spell] += 1
+            # ------------------------------------------------
+            # Only after persistence succeeds do we update the
+            # application's local counters.
+            # ------------------------------------------------
+
+            session_sample_counts[sample.spell] += 1
+
+            total_sample_counts[sample.spell] += 1
 
             print(f"Saved " f"{sample.spell.value} " f"sample " f"{sample.gesture_id}")
 
             print(f"Session: " f"{sample.session_id}")
 
             print(
-                f"{sample.spell.value}: "
-                f"{sample_counts[sample.spell]}"
+                f"Session progress: "
+                f"{session_sample_counts[sample.spell]}"
                 f" / "
                 f"{TARGET_SAMPLES_PER_SPELL}"
             )
+
+            print(
+                f"Total "
+                f"{sample.spell.value}: "
+                f"{total_sample_counts[sample.spell]}"
+            )
+
+            # ------------------------------------------------
+            # Clear pending review state.
+            # ------------------------------------------------
 
             pending_trajectory = ()
 

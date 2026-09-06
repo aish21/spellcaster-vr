@@ -65,6 +65,7 @@ def test_empty_trajectory_cannot_create_features():
 def test_sample_feature_vector_is_translation_and_scale_invariant():
     small = GestureSample(
         gesture_id="small",
+        session_id="test-session",
         spell=Spell.FIREBALL,
         duration_ms=500,
         trajectory=(
@@ -76,6 +77,7 @@ def test_sample_feature_vector_is_translation_and_scale_invariant():
 
     large_shifted = GestureSample(
         gesture_id="large",
+        session_id="test-session",
         spell=Spell.FIREBALL,
         duration_ms=900,
         trajectory=(
